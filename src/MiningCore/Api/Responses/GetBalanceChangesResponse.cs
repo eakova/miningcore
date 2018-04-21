@@ -18,12 +18,18 @@ WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN 
 SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */
 
-namespace MiningCore.Blockchain.Ethereum
+using System;
+using MiningCore.Configuration;
+
+namespace MiningCore.Api.Responses
 {
-    public class EthereumShare : ShareBase
+    public class BalanceChange
     {
-        public string FullNonceHex { get; set; }
-        public string HeaderHash { get; set; }
-        public string MixHash { get; set; }
+        public string PoolId { get; set; }
+        public string Coin { get; set; }
+        public string Address { get; set; }
+        public decimal Amount { get; set; }
+        public string Usage { get; set; }
+        public DateTime Created { get; set; }
     }
 }

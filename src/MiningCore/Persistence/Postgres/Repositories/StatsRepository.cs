@@ -29,6 +29,7 @@ using MiningCore.Persistence.Model;
 using MiningCore.Persistence.Model.Projections;
 using MiningCore.Persistence.Repositories;
 using MiningCore.Time;
+using NBitcoin;
 using NLog;
 using MinerStats = MiningCore.Persistence.Model.Projections.MinerStats;
 
@@ -45,7 +46,7 @@ namespace MiningCore.Persistence.Postgres.Repositories
         private readonly IMapper mapper;
         private readonly IMasterClock clock;
         private static readonly ILogger logger = LogManager.GetCurrentClassLogger();
-        private static readonly TimeSpan MinerStatsMaxAge = TimeSpan.FromMinutes(15);
+        private static readonly TimeSpan MinerStatsMaxAge = TimeSpan.FromMinutes(20);
 
         public void InsertPoolStats(IDbConnection con, IDbTransaction tx, PoolStats stats)
         {
@@ -54,9 +55,9 @@ namespace MiningCore.Persistence.Postgres.Repositories
             var mapped = mapper.Map<Entities.PoolStats>(stats);
 
             var query = "INSERT INTO poolstats(poolid, connectedminers, poolhashrate, networkhashrate, " +
-                        "networkdifficulty, lastnetworkblocktime, blockheight, connectedpeers, created) " +
+                        "networkdifficulty, lastnetworkblocktime, blockheight, connectedpeers, sharespersecond, created) " +
                         "VALUES(@poolid, @connectedminers, @poolhashrate, @networkhashrate, @networkdifficulty, " +
-                        "@lastnetworkblocktime, @blockheight, @connectedpeers, @created)";
+                        "@lastnetworkblocktime, @blockheight, @connectedpeers, @sharespersecond, @created)";
 
             con.Execute(query, mapped, tx);
         }
@@ -145,7 +146,7 @@ namespace MiningCore.Persistence.Postgres.Repositories
                 var lastUpdate = con.QuerySingleOrDefault<DateTime?>(query, new { poolId, miner }, tx);
 
                 // ignore stale minerstats
-                if (lastUpdate.HasValue && (clock.Now - lastUpdate) > MinerStatsMaxAge)
+                if (lastUpdate.HasValue && (clock.Now - DateTime.SpecifyKind(lastUpdate.Value, DateTimeKind.Utc) > MinerStatsMaxAge))
                     lastUpdate = null;
 
                 if (lastUpdate.HasValue)
@@ -217,28 +218,20 @@ namespace MiningCore.Persistence.Postgres.Repositories
                     SharesPerSecond = y.SharesPerSecond
                 })
             })
-            .OrderBy(x=> x.Created)
             .ToArray();
+            //.ToDictionary(x=> x.Created.ToUniversalTime().ToUnixTimestamp(), x=> x);
 
-            // fill in blanks
+            //// fill in blanks
             //var result = new List<WorkerPerformanceStatsContainer>();
-            //var lastCreated = start;
-            //var maxItemCount = 24;
 
-            //foreach (var item in tmp)
+            //for (var i = 0; i < 24; i++)
             //{
-            //    while (result.Count < maxItemCount && 
-            //        (item.Created - lastCreated > TimeSpan.FromHours(1)))
-            //    {
-            //        result.Add(new WorkerPerformanceStatsContainer { Created = lastCreated });
-            //        lastCreated = lastCreated.AddHours(1);
-            //    }
+            //    if(tmp.TryGetValue(end.ToUnixTimestamp(), out var item))
+            //        result.Insert(0, item);
+            //    else
+            //        result.Add(new WorkerPerformanceStatsContainer { Created = end, Workers = new Dictionary<string, WorkerPerformanceStats>() });
 
-            //    if (result.Count >= maxItemCount)
-            //        break;
-
-            //    result.Add(item);
-            //    lastCreated = item.Created;
+            //    end = end.AddHours(-1);
             //}
 
             //return result.ToArray();
@@ -268,32 +261,23 @@ namespace MiningCore.Persistence.Postgres.Repositories
                     SharesPerSecond = y.SharesPerSecond
                 })
             })
-            .OrderBy(x => x.Created)
             .ToArray();
+            //.ToDictionary(x => x.Created.ToUniversalTime().ToUnixTimestamp(), x => x);
 
             //// fill in blanks
             //var result = new List<WorkerPerformanceStatsContainer>();
-            //var lastCreated = start;
-            //var maxItemCount = 31;
 
-            //foreach (var item in tmp)
+            //for (var i = 0; i < 30; i++)
             //{
-            //    while (result.Count < maxItemCount &&
-            //           (item.Created - lastCreated > TimeSpan.FromDays(1)))
-            //    {
-            //        result.Add(new WorkerPerformanceStatsContainer { Created = lastCreated });
-            //        lastCreated = lastCreated.AddDays(1);
-            //    }
+            //    if (tmp.TryGetValue(end.ToUnixTimestamp(), out var item))
+            //        result.Insert(0, item);
+            //    else
+            //        result.Add(new WorkerPerformanceStatsContainer { Created = end, Workers = new Dictionary<string, WorkerPerformanceStats>() });
 
-            //    if (result.Count >= maxItemCount)
-            //        break;
-
-            //    result.Add(item);
-            //    lastCreated = item.Created;
+            //    end = end.AddDays(-1);
             //}
 
             //return result.ToArray();
-
             return tmp;
         }
 

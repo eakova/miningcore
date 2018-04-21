@@ -41,8 +41,8 @@ using Newtonsoft.Json;
 
 namespace MiningCore.Blockchain.Ethereum
 {
-    [CoinMetadata(CoinType.ETH, CoinType.ETC, CoinType.EXP, CoinType.ELLA)]
-    public class EthereumPool : PoolBase<EthereumShare>
+    [CoinMetadata(CoinType.ETH, CoinType.ETC, CoinType.EXP, CoinType.ELLA, CoinType.CLO)]
+    public class EthereumPool : PoolBase
     {
         public EthereumPool(IComponentContext ctx,
             JsonSerializerSettings serializerSettings,
@@ -111,12 +111,13 @@ namespace MiningCore.Blockchain.Ethereum
 
             var requestParams = request.ParamsAs<string[]>();
             var workerValue = requestParams?.Length > 0 ? requestParams[0] : null;
-            //var password = requestParams?.Length > 1 ? requestParams[1] : null;
+            var password = requestParams?.Length > 1 ? requestParams[1] : null;
+            var passParts = password?.Split(PasswordControlVarsSeparator);
 
             // extract worker/miner
-            var split = workerValue?.Split('.');
-            var minerName = split?.FirstOrDefault()?.Trim();
-            var workerName = split?.Skip(1).LastOrDefault()?.Trim();
+            var workerParts = workerValue?.Split('.');
+            var minerName = workerParts?.Length > 0 ? workerParts[0].Trim() : null;
+            var workerName = workerParts?.Length > 1 ? workerParts[1].Trim() : null;
 
             // assumes that workerName is an address
             context.IsAuthorized = !string.IsNullOrEmpty(minerName) && manager.ValidateAddress(minerName);
@@ -125,6 +126,16 @@ namespace MiningCore.Blockchain.Ethereum
 
             // respond
             client.Respond(context.IsAuthorized, request.Id);
+
+            // extract control vars from password
+            var staticDiff = GetStaticDiffFromPassparts(passParts);
+            if (staticDiff.HasValue &&
+                (context.VarDiff != null && staticDiff.Value >= context.VarDiff.Config.MinDiff ||
+                context.VarDiff == null && staticDiff.Value > context.Difficulty))
+            {
+                context.VarDiff = null; // disable vardiff
+                context.SetDifficulty(staticDiff.Value);
+            }
 
             EnsureInitialWorkSent(client);
 
@@ -261,7 +272,7 @@ namespace MiningCore.Blockchain.Ethereum
 
             await manager.StartAsync();
 
-            if (!poolConfig.ExternalStratum)
+            if (poolConfig.EnableInternalStratum == true)
 	        {
 		        disposables.Add(manager.Jobs.Subscribe(OnNewJob));
 
@@ -341,8 +352,8 @@ namespace MiningCore.Blockchain.Ethereum
             base.Configure(poolConfig, clusterConfig);
 
             // validate mandatory extra config
-            var extraConfig = poolConfig.PaymentProcessing.Extra.SafeExtensionDataAs<EthereumPoolPaymentProcessingConfigExtra>();
-            if (extraConfig?.CoinbasePassword == null)
+            var extraConfig = poolConfig.PaymentProcessing?.Extra?.SafeExtensionDataAs<EthereumPoolPaymentProcessingConfigExtra>();
+            if (clusterConfig.PaymentProcessing?.Enabled == true && extraConfig?.CoinbasePassword == null)
                 logger.ThrowLogPoolStartupException("\"paymentProcessing.coinbasePassword\" pool-configuration property missing or empty (required for unlocking wallet during payment processing)");
         }
 
